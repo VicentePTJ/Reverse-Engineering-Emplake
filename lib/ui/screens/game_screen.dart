@@ -419,8 +419,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     String digit, {
     required bool isSmallScreen,
   }) {
+  Widget _buildFixedDigitTile(
+    BuildContext context,
+    String digit, {
+    required bool isSmallScreen,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
+      width: isSmallScreen ? 38 : 42,
+      height: isSmallScreen ? 42 : 46,
       width: isSmallScreen ? 38 : 42,
       height: isSmallScreen ? 42 : 46,
       alignment: Alignment.center,
@@ -432,6 +439,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       child: Text(
         digit,
         style: TextStyle(
+          fontSize: isSmallScreen ? 21 : 24,
           fontSize: isSmallScreen ? 21 : 24,
           fontWeight: FontWeight.bold,
           color: colorScheme.onPrimaryContainer,
@@ -445,6 +453,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     required int slotIndex,
     required List<String> slotTokens,
     required bool isActive,
+    required bool isSmallScreen,
     required bool isSmallScreen,
     required GameNotifier gameNotifier,
   }) {
@@ -516,10 +525,65 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           );
         });
 
+        final tokenChips = List.generate(slotTokens.length, (tokenIdx) {
+          final op = slotTokens[tokenIdx];
+          return Padding(
+            padding: EdgeInsets.only(
+              right: !isSmallScreen && tokenIdx < slotTokens.length - 1 ? 4 : 0,
+            ),
+            child: Draggable<_OperatorDragData>(
+              data: _OperatorDragData.move(
+                op: op,
+                fromSlot: slotIndex,
+                tokenIndex: tokenIdx,
+              ),
+              feedback: Material(
+                color: Colors.transparent,
+                child: Chip(
+                  label: Text(
+                    op,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  backgroundColor: colorScheme.primary,
+                  labelStyle: TextStyle(color: colorScheme.onPrimary),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: Chip(label: Text(op)),
+              ),
+              child: InputChip(
+                label: Text(
+                  op,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSecondaryContainer,
+                  ),
+                ),
+                backgroundColor: colorScheme.secondaryContainer,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                onDeleted: () => gameNotifier.removeOperatorAt(slotIndex, tokenIdx),
+                deleteIcon: Icon(
+                  Icons.close,
+                  size: 15,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+              ),
+            ),
+          );
+        });
+
         return GestureDetector(
           onTap: () => gameNotifier.selectSlot(slotIndex),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
+            constraints: BoxConstraints(
+              minWidth: isSmallScreen ? 28 : 32,
+              minHeight: isSmallScreen ? 40 : 44,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             constraints: BoxConstraints(
               minWidth: isSmallScreen ? 28 : 32,
               minHeight: isSmallScreen ? 40 : 44,
@@ -530,13 +594,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   ? colorScheme.tertiaryContainer
                   : isActive
                       ? colorScheme.secondaryContainer.withOpacity(0.55)
+                      ? colorScheme.secondaryContainer.withOpacity(0.55)
                       : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isHovered
                     ? colorScheme.tertiary
                     : isActive
                         ? colorScheme.primary
+                        : colorScheme.outlineVariant.withOpacity(0.7),
                         : colorScheme.outlineVariant.withOpacity(0.7),
                 width: isHovered || isActive ? 2 : 1,
               ),
@@ -552,6 +619,18 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       ),
                     ),
                   )
+                : isSmallScreen
+                    ? Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: tokenChips,
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: tokenChips,
+                      ),
                 : isSmallScreen
                     ? Wrap(
                         spacing: 4,
@@ -581,11 +660,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       style: ElevatedButton.styleFrom(
         shape: const StadiumBorder(),
         minimumSize: const Size(46, 40),
+        shape: const StadiumBorder(),
+        minimumSize: const Size(46, 40),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         backgroundColor: op == '=' ? colorScheme.tertiaryContainer : colorScheme.secondaryContainer,
         foregroundColor: op == '=' ? colorScheme.onTertiaryContainer : colorScheme.onSecondaryContainer,
       ),
       onPressed: onTap,
+      child: Text(op, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
       child: Text(op, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
     );
 
@@ -597,6 +679,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: colorScheme.primary,
+            borderRadius: BorderRadius.circular(20),
             borderRadius: BorderRadius.circular(20),
             boxShadow: const [BoxShadow(blurRadius: 8, color: Colors.black26)],
           ),
