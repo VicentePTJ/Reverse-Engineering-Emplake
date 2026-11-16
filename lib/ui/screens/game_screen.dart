@@ -67,11 +67,12 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
     super.initState();
     _flyController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1400),
+      animationBehavior: AnimationBehavior.preserve, // Impede o Windows de acelerar para 5%
     );
     _flyAnimation = CurvedAnimation(
       parent: _flyController,
-      curve: Curves.easeInOutCubic,
+      curve: Curves.easeInOutQuart,
     );
 
     _flyController.addStatusListener((status) {
