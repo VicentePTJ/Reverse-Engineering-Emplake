@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "5720398219",
+    "project_id": "ddm-project-cms",
+    "storage_bucket": "ddm-project-cms.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:5720398219:android:0afb79b6efb7a9cc7c778e",
+        "android_client_info": {
+          "package_name": "com.example.emplake"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCsAn_EISzQBXhwC68Vmvrm7OJave7zio"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
