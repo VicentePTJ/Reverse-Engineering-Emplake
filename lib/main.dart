@@ -6,11 +6,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/app_providers.dart';
 import 'router/app_router.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(
     ProviderScope(
       overrides: [
