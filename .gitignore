@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+firebase_config.json
+android/app/google-services.json
+.venv

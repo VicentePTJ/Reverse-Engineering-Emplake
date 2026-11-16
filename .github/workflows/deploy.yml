@@ -34,9 +34,15 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Baixar pacotes e compilar Web
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
         run: |
+          echo "$FIREBASE_CONFIG" > firebase_config.json
           flutter pub get
-          flutter build web --release --base-href "${{ steps.pages.outputs.base_path }}/"
+          flutter build web --release \
+            --base-href "${{ steps.pages.outputs.base_path }}/" \
+            --dart-define-from-file=firebase_config.json
+          rm -f firebase_config.json
 
       - name: Empacotar build
         uses: actions/upload-pages-artifact@v3
