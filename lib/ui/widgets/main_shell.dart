@@ -18,19 +18,22 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _calculateSelectedIndex(context);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: child,
       bottomNavigationBar: CurvedNavigationBar(
         index: selectedIndex,
+        height: 56, // Mais compacto para caber tudo sem scroll no navegador
         backgroundColor: Colors.transparent,
-        color: Theme.of(context).colorScheme.primary,
+        color: colorScheme.primary,
+        buttonBackgroundColor: colorScheme.primary,
         animationDuration: const Duration(milliseconds: 300),
-        items: const [
-          Icon(Icons.gamepad, color: Colors.white),
-          Icon(Icons.history, color: Colors.white),
-          Icon(Icons.settings, color: Colors.white),
-          Icon(Icons.help_outline, color: Colors.white),
+        items: [
+          Icon(Icons.gamepad, color: colorScheme.onPrimary),
+          Icon(Icons.history, color: colorScheme.onPrimary),
+          Icon(Icons.settings, color: colorScheme.onPrimary),
+          Icon(Icons.help_outline, color: colorScheme.onPrimary),
         ],
         onTap: (index) {
           switch (index) {
@@ -44,7 +47,6 @@ class MainShell extends StatelessWidget {
               context.go('/settings');
               break;
             case 3:
-              // Botão de Ajuda via showDialog
               showDialog(
                 context: context,
                 builder: (context) => const HelpDialog(),
