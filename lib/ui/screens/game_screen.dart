@@ -106,6 +106,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             },
           ),
           IconButton(
+            icon: Icon(
+              ref.watch(settingsProvider).musicEnabled
+                  ? Icons.music_note
+                  : Icons.music_off,
+              color: ref.watch(settingsProvider).musicEnabled ? kMikuTeal : null,
+            ),
+            tooltip: l10n.mikuMusicTitle,
+            onPressed: () {
+              final current = ref.read(settingsProvider).musicEnabled;
+              ref.read(settingsProvider.notifier).toggleMusic(!current);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.logout,
             onPressed: () async {

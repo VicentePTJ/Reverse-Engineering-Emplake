@@ -24,6 +24,7 @@ class AppSettings {
   final double fontSizeMultiplier;
   final Color seedColor;
   final bool soundEnabled;
+  final bool musicEnabled; // <--- Novo campo
   final String languageCode;
 
   AppSettings({
@@ -32,15 +33,17 @@ class AppSettings {
     required this.fontSizeMultiplier,
     required this.seedColor,
     required this.soundEnabled,
+    required this.musicEnabled,
     required this.languageCode,
   });
 
-  AppSettings copyWith({
+AppSettings copyWith({
     bool? isDarkMode,
     String? fontFamily,
     double? fontSizeMultiplier,
     Color? seedColor,
     bool? soundEnabled,
+    bool? musicEnabled,
     String? languageCode,
   }) {
     return AppSettings(
@@ -49,6 +52,7 @@ class AppSettings {
       fontSizeMultiplier: fontSizeMultiplier ?? this.fontSizeMultiplier,
       seedColor: seedColor ?? this.seedColor,
       soundEnabled: soundEnabled ?? this.soundEnabled,
+      musicEnabled: musicEnabled ?? this.musicEnabled,
       languageCode: languageCode ?? this.languageCode,
     );
   }
@@ -70,8 +74,18 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       fontSizeMultiplier: prefs.getDouble('fontSizeMultiplier') ?? 1.0,
       seedColor: Color(prefs.getInt('seedColor') ?? kMikuTeal.value),
       soundEnabled: prefs.getBool('soundEnabled') ?? false,
+      musicEnabled: false, // Sempre inicia desligada ao abrir o app (usabilidade)
       languageCode: prefs.getString('languageCode') ?? 'pt',
     );
+  }
+
+  void toggleMusic(bool enabled) {
+    state = state.copyWith(musicEnabled: enabled);
+    if (enabled) {
+      soundService.startMikuMusic();
+    } else {
+      soundService.stopMikuMusic();
+    }
   }
 
   void toggleTheme(bool isDark) {

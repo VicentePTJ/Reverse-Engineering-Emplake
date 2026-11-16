@@ -84,6 +84,12 @@ class AppLocalizations {
         '4. Build a valid equation using (=) to earn points in your Firebase account.\n\n'
         '5. In Intermediate, Advanced, and Hard levels, non-integer divisions trigger an error.';
   String get gotIt => isPt ? 'Entendi' : 'Got it';
+
+
+  String get mikuMusicTitle => isPt ? 'Música da Hatsune Miku' : 'Hatsune Miku Music';
+  String get mikuMusicSubtitle => isPt
+      ? 'Música de fundo em loop (inicia desligada)'
+      : 'Looping background music (starts off)';
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
