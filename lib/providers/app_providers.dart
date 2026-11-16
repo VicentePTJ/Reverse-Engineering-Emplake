@@ -1,11 +1,11 @@
 import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../engine/math_engine.dart';
 import '../services/firestore_service.dart';
+import '../services/sound_service.dart';
 
 const Color kMikuTeal = Color(0xFF39C5BB);
 
@@ -56,8 +56,9 @@ class AppSettings {
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
   final SharedPreferences prefs;
+  final SoundService soundService;
 
-  SettingsNotifier(this.prefs) : super(_loadInitial(prefs));
+  SettingsNotifier(this.prefs, this.soundService) : super(_loadInitial(prefs));
 
   static AppSettings _loadInitial(SharedPreferences prefs) {
     final savedFont = prefs.getString('fontFamily') ?? 'Roboto';
@@ -97,6 +98,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void toggleSound(bool enabled) {
     prefs.setBool('soundEnabled', enabled);
     state = state.copyWith(soundEnabled: enabled);
+    // Toca um som imediato ao ativar para confirmar o funcionamento no navegador
+    if (enabled) {
+      soundService.playClick();
+    }
   }
 
   void setLanguage(String code) {
@@ -178,9 +183,10 @@ class GameState {
 
 class GameNotifier extends StateNotifier<GameState> {
   final FirestoreService firestoreService;
+  final SoundService soundService;
   final Ref ref;
 
-  GameNotifier(this.firestoreService, this.ref)
+  GameNotifier(this.firestoreService, this.soundService, this.ref)
       : super(GameState(
           currentNumber: '8131',
           level: DifficultyLevel.facil,
@@ -200,7 +206,20 @@ class GameNotifier extends StateNotifier<GameState> {
     ];
   }
 
-  /// Sincroniza os dados carregados do Firestore e garante um número ainda não resolvido
+  bool get _isSoundEnabled => ref.read(settingsProvider).soundEnabled;
+
+  void _playClick() {
+    if (_isSoundEnabled) soundService.playClick();
+  }
+
+  void _playSuccess() {
+    if (_isSoundEnabled) soundService.playSuccess();
+  }
+
+  void _playError() {
+    if (_isSoundEnabled) soundService.playError();
+  }
+
   void syncFromFirestore(String uid, UserGameProfile profile) {
     if (state.syncedUserId == uid) return;
 
@@ -220,20 +239,15 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  void _playClickIfEnabled() {
-    if (ref.read(settingsProvider).soundEnabled) {
-      SystemSound.play(SystemSoundType.click);
-    }
-  }
-
   void selectSlot(int index) {
     if (index >= 0 && index <= 4) {
+      _playClick();
       state = state.copyWith(activeSlotIndex: index, feedbackStatus: FeedbackStatus.none);
     }
   }
 
   void smartInsertOperator(String op) {
-    _playClickIfEnabled();
+    _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     int targetSlot = state.activeSlotIndex;
 
@@ -317,7 +331,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void insertOperatorAtSlot(int slotIndex, String op) {
-    _playClickIfEnabled();
+    _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
 
     if (op == '=') {
@@ -336,7 +350,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void moveOperator(int fromSlot, int tokenIndex, int toSlot) {
-    _playClickIfEnabled();
+    _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     final op = slots[fromSlot].removeAt(tokenIndex);
     slots[toSlot].add(op);
@@ -348,7 +362,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void removeOperatorAt(int slotIndex, int tokenIndex) {
-    _playClickIfEnabled();
+    _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     if (tokenIndex >= 0 && tokenIndex < slots[slotIndex].length) {
       slots[slotIndex].removeAt(tokenIndex);
@@ -362,7 +376,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void clearFormula() {
-    _playClickIfEnabled();
+    _playClick();
     state = state.copyWith(
       operatorSlots: _defaultSlots(),
       activeSlotIndex: 1,
@@ -383,6 +397,9 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void setFeedback(String message, FeedbackStatus status, MikuMood mood) {
+    if (status == FeedbackStatus.error) {
+      _playError();
+    }
     state = state.copyWith(
       feedbackMessage: message,
       feedbackStatus: status,
@@ -390,9 +407,8 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Sorteia um número aleatório verificando antes se o usuário já o resolveu no Firestore
   void skipCurrentNumber() {
-    _playClickIfEnabled();
+    _playClick();
     final nextNum = FirestoreService.pickUnsolvedNumber(
       state.solvedNumbers,
       excludeCurrent: state.currentNumber,
@@ -407,8 +423,10 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Grava o número resolvido e a pontuação no Firestore e avança para outro número não resolvido
   Future<void> markCurrentAsSolved(String successMsg) async {
+    // Toca imediatamente dentro do gesto de clique do usuário (evita bloqueio do navegador)
+    _playSuccess();
+
     final user = FirebaseAuth.instance.currentUser;
     final solvedNum = state.currentNumber;
     final points = FirestoreService.pointsForLevel(state.level);
@@ -447,12 +465,16 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) => throw Uni
 
 final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
 
+final soundServiceProvider = Provider<SoundService>((ref) => SoundService());
+
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
-  return SettingsNotifier(prefs);
+  final soundService = ref.watch(soundServiceProvider);
+  return SettingsNotifier(prefs, soundService);
 });
 
 final gameProvider = StateNotifierProvider<GameNotifier, GameState>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider);
-  return GameNotifier(firestoreService, ref);
+  final soundService = ref.watch(soundServiceProvider);
+  return GameNotifier(firestoreService, soundService, ref);
 });
