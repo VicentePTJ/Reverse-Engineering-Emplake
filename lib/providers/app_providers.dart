@@ -24,7 +24,7 @@ class AppSettings {
   final double fontSizeMultiplier;
   final Color seedColor;
   final bool soundEnabled;
-  final bool musicEnabled; // <--- Novo campo
+  final bool musicEnabled;
   final String languageCode;
 
   AppSettings({
@@ -37,7 +37,7 @@ class AppSettings {
     required this.languageCode,
   });
 
-AppSettings copyWith({
+  AppSettings copyWith({
     bool? isDarkMode,
     String? fontFamily,
     double? fontSizeMultiplier,
@@ -74,7 +74,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       fontSizeMultiplier: prefs.getDouble('fontSizeMultiplier') ?? 1.0,
       seedColor: Color(prefs.getInt('seedColor') ?? kMikuTeal.value),
       soundEnabled: prefs.getBool('soundEnabled') ?? false,
-      musicEnabled: false, // Sempre inicia desligada ao abrir o app (usabilidade)
+      musicEnabled: false,
       languageCode: prefs.getString('languageCode') ?? 'pt',
     );
   }
@@ -112,7 +112,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void toggleSound(bool enabled) {
     prefs.setBool('soundEnabled', enabled);
     state = state.copyWith(soundEnabled: enabled);
-    // Toca um som imediato ao ativar para confirmar o funcionamento no navegador
     if (enabled) {
       soundService.playClick();
     }
@@ -220,6 +219,16 @@ class GameNotifier extends StateNotifier<GameState> {
     ];
   }
 
+  static List<List<String>> _emptySlots() {
+    return [
+      [],
+      [],
+      [],
+      [],
+      [],
+    ];
+  }
+
   bool get _isSoundEnabled => ref.read(settingsProvider).soundEnabled;
 
   void _playClick() {
@@ -254,6 +263,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void selectSlot(int index) {
+    if (state.isAnimating) return;
     if (index >= 0 && index <= 4) {
       _playClick();
       state = state.copyWith(activeSlotIndex: index, feedbackStatus: FeedbackStatus.none);
@@ -261,6 +271,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void smartInsertOperator(String op) {
+    if (state.isAnimating) return;
     _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     int targetSlot = state.activeSlotIndex;
@@ -345,6 +356,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void insertOperatorAtSlot(int slotIndex, String op) {
+    if (state.isAnimating) return;
     _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
 
@@ -364,6 +376,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void moveOperator(int fromSlot, int tokenIndex, int toSlot) {
+    if (state.isAnimating) return;
     _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     final op = slots[fromSlot].removeAt(tokenIndex);
@@ -376,6 +389,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void removeOperatorAt(int slotIndex, int tokenIndex) {
+    if (state.isAnimating) return;
     _playClick();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     if (tokenIndex >= 0 && tokenIndex < slots[slotIndex].length) {
@@ -389,25 +403,38 @@ class GameNotifier extends StateNotifier<GameState> {
     }
   }
 
-  void clearFormula() {
-    _playClick();
+  /// Esvazia os slots visualmente enquanto os operadores voam de volta aos botões
+  void startReturnAnimation({bool isSuccess = false, String? successMsg, int? pointsEarned}) {
+    if (!isSuccess) {
+      _playClick();
+    }
+    state = state.copyWith(
+      operatorSlots: _emptySlots(),
+      isAnimating: true,
+      feedbackMessage: isSuccess && successMsg != null ? '$successMsg (+${pointsEarned ?? 0} pts)' : '',
+      feedbackStatus: isSuccess ? FeedbackStatus.success : FeedbackStatus.none,
+      mikuMood: isSuccess ? MikuMood.happy : MikuMood.thinking,
+    );
+  }
+
+  /// Finaliza a limpeza restaurando o sinal de '=' padrão após o pouso dos operadores
+  void finishClearAnimation() {
     state = state.copyWith(
       operatorSlots: _defaultSlots(),
       activeSlotIndex: 1,
-      isAnimating: true,
+      isAnimating: false,
       feedbackStatus: FeedbackStatus.none,
       mikuMood: MikuMood.thinking,
     );
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        state = state.copyWith(isAnimating: false);
-      }
-    });
+  }
+
+  void clearFormula() {
+    finishClearAnimation();
   }
 
   void setLevel(DifficultyLevel level) {
     state = state.copyWith(level: level);
-    clearFormula();
+    finishClearAnimation();
   }
 
   void setFeedback(String message, FeedbackStatus status, MikuMood mood) {
@@ -422,7 +449,9 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void skipCurrentNumber() {
-    _playClick();
+    if (!state.isAnimating) {
+      _playClick();
+    }
     final nextNum = FirestoreService.pickUnsolvedNumber(
       state.solvedNumbers,
       excludeCurrent: state.currentNumber,
@@ -432,13 +461,14 @@ class GameNotifier extends StateNotifier<GameState> {
       currentNumber: nextNum,
       operatorSlots: _defaultSlots(),
       activeSlotIndex: 1,
+      isAnimating: false,
       feedbackStatus: FeedbackStatus.none,
       mikuMood: MikuMood.thinking,
     );
   }
 
-  Future<void> markCurrentAsSolved(String successMsg) async {
-    // Toca imediatamente dentro do gesto de clique do usuário (evita bloqueio do navegador)
+  /// Toca o som de sucesso no gesto do usuário e salva a pontuação no Firestore
+  Future<int> saveSolvedToCloud() async {
     _playSuccess();
 
     final user = FirebaseAuth.instance.currentUser;
@@ -460,18 +490,8 @@ class GameNotifier extends StateNotifier<GameState> {
     state = state.copyWith(
       solvedNumbers: updatedSolved,
       score: updatedScore,
-      feedbackMessage: '$successMsg (+$points pts)',
-      feedbackStatus: FeedbackStatus.success,
-      mikuMood: MikuMood.happy,
-      isAnimating: true,
     );
-
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) {
-        state = state.copyWith(isAnimating: false);
-        skipCurrentNumber();
-      }
-    });
+    return points;
   }
 }
 
