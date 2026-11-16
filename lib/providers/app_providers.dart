@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../engine/math_engine.dart';
+import '../services/firestore_service.dart';
 
 const Color kMikuTeal = Color(0xFF39C5BB);
 
@@ -108,30 +110,32 @@ enum FeedbackStatus { none, success, error }
 enum MikuMood { thinking, happy, oops }
 
 class GameState {
+  final String? syncedUserId;
   final String currentNumber;
   final DifficultyLevel level;
-  /// 5 slots ao redor dos 4 dígitos: [antes D0, entre D0-D1, entre D1-D2, entre D2-D3, depois D3]
   final List<List<String>> operatorSlots;
   final int activeSlotIndex;
   final List<String> solvedNumbers;
+  final int score;
   final bool isAnimating;
   final String feedbackMessage;
   final FeedbackStatus feedbackStatus;
   final MikuMood mikuMood;
 
   GameState({
+    this.syncedUserId,
     required this.currentNumber,
     required this.level,
     required this.operatorSlots,
     this.activeSlotIndex = 1,
     required this.solvedNumbers,
+    this.score = 0,
     this.isAnimating = false,
     this.feedbackMessage = '',
     this.feedbackStatus = FeedbackStatus.none,
     this.mikuMood = MikuMood.thinking,
   });
 
-  /// Monta a lista linear completa intercalando os 5 slots com os 4 dígitos fixos
   List<String> get fullTokens {
     final digits = currentNumber.split('');
     final result = <String>[];
@@ -144,22 +148,26 @@ class GameState {
   }
 
   GameState copyWith({
+    String? syncedUserId,
     String? currentNumber,
     DifficultyLevel? level,
     List<List<String>>? operatorSlots,
     int? activeSlotIndex,
     List<String>? solvedNumbers,
+    int? score,
     bool? isAnimating,
     String? feedbackMessage,
     FeedbackStatus? feedbackStatus,
     MikuMood? mikuMood,
   }) {
     return GameState(
+      syncedUserId: syncedUserId ?? this.syncedUserId,
       currentNumber: currentNumber ?? this.currentNumber,
       level: level ?? this.level,
       operatorSlots: operatorSlots ?? this.operatorSlots,
       activeSlotIndex: activeSlotIndex ?? this.activeSlotIndex,
       solvedNumbers: solvedNumbers ?? this.solvedNumbers,
+      score: score ?? this.score,
       isAnimating: isAnimating ?? this.isAnimating,
       feedbackMessage: feedbackMessage ?? this.feedbackMessage,
       feedbackStatus: feedbackStatus ?? this.feedbackStatus,
@@ -169,20 +177,20 @@ class GameState {
 }
 
 class GameNotifier extends StateNotifier<GameState> {
-  final SharedPreferences prefs;
+  final FirestoreService firestoreService;
   final Ref ref;
 
-  GameNotifier(this.prefs, this.ref)
+  GameNotifier(this.firestoreService, this.ref)
       : super(GameState(
           currentNumber: '8131',
           level: DifficultyLevel.facil,
           operatorSlots: _defaultSlots(),
           activeSlotIndex: 1,
-          solvedNumbers: prefs.getStringList('solvedNumbers') ?? [],
+          solvedNumbers: const [],
+          score: 0,
         ));
 
   static List<List<String>> _defaultSlots() {
-    // O sinal de '=' já inicia posicionado no meio (slot 2)
     return [
       [],
       [],
@@ -190,6 +198,26 @@ class GameNotifier extends StateNotifier<GameState> {
       [],
       [],
     ];
+  }
+
+  /// Sincroniza os dados carregados do Firestore e garante um número ainda não resolvido
+  void syncFromFirestore(String uid, UserGameProfile profile) {
+    if (state.syncedUserId == uid) return;
+
+    final nextUnsolved = profile.solvedNumbers.contains(state.currentNumber)
+        ? FirestoreService.pickUnsolvedNumber(profile.solvedNumbers)
+        : state.currentNumber;
+
+    state = state.copyWith(
+      syncedUserId: uid,
+      solvedNumbers: profile.solvedNumbers,
+      score: profile.score,
+      currentNumber: nextUnsolved,
+      operatorSlots: _defaultSlots(),
+      activeSlotIndex: 1,
+      feedbackStatus: FeedbackStatus.none,
+      mikuMood: MikuMood.thinking,
+    );
   }
 
   void _playClickIfEnabled() {
@@ -204,14 +232,12 @@ class GameNotifier extends StateNotifier<GameState> {
     }
   }
 
-  /// Inserção automática inteligente no slot ativo (ao tocar em um operador)
   void smartInsertOperator(String op) {
     _playClickIfEnabled();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
     int targetSlot = state.activeSlotIndex;
 
     if (op == '=') {
-      // Remove '=' anterior e coloca no slot ativo (ou no slot 2 se estiver nas pontas)
       for (final s in slots) {
         s.remove('=');
       }
@@ -225,17 +251,12 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
-    // Operadores de agrupamento inserem o par automaticamente ao redor do dígito seguinte
     if (op == '(') {
       final openSlot = targetSlot > 3 ? 0 : targetSlot;
       final closeSlot = min(openSlot + 2, 4);
       slots[openSlot].add('(');
       slots[closeSlot].insert(0, ')');
-      state = state.copyWith(
-        operatorSlots: slots,
-        feedbackStatus: FeedbackStatus.none,
-        mikuMood: MikuMood.thinking,
-      );
+      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
       return;
     }
 
@@ -244,11 +265,7 @@ class GameNotifier extends StateNotifier<GameState> {
       final closeSlot = min(openSlot + 2, 4);
       slots[openSlot].add('|');
       slots[closeSlot].insert(0, '|');
-      state = state.copyWith(
-        operatorSlots: slots,
-        feedbackStatus: FeedbackStatus.none,
-        mikuMood: MikuMood.thinking,
-      );
+      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
       return;
     }
 
@@ -270,31 +287,20 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
-    // Prefixos (√, ∛) entram antes do dígito
     if (op == '√' || op == '∛') {
       final prefixSlot = targetSlot == 4 ? 3 : targetSlot;
       slots[prefixSlot].add(op);
-      state = state.copyWith(
-        operatorSlots: slots,
-        feedbackStatus: FeedbackStatus.none,
-        mikuMood: MikuMood.thinking,
-      );
+      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
       return;
     }
 
-    // Pós-fixo (!) entra depois de um dígito
     if (op == '!') {
       final postSlot = targetSlot == 0 ? 1 : targetSlot;
       slots[postSlot].add('!');
-      state = state.copyWith(
-        operatorSlots: slots,
-        feedbackStatus: FeedbackStatus.none,
-        mikuMood: MikuMood.thinking,
-      );
+      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
       return;
     }
 
-    // Operadores binários (+, -, *, /, **) entram no meio dos números e avançam o cursor sozinhos
     int binarySlot = targetSlot;
     if (binarySlot == 0 && op != '-') binarySlot = 1;
     if (binarySlot == 4) binarySlot = 3;
@@ -310,7 +316,6 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Inserção direta via Drag & Drop em qualquer slot escolhido pelo usuário
   void insertOperatorAtSlot(int slotIndex, String op) {
     _playClickIfEnabled();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
@@ -330,7 +335,6 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Move um operador já posicionado de um slot para outro via Drag & Drop
   void moveOperator(int fromSlot, int tokenIndex, int toSlot) {
     _playClickIfEnabled();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
@@ -343,7 +347,6 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Remove um operador individualmente
   void removeOperatorAt(int slotIndex, int tokenIndex) {
     _playClickIfEnabled();
     final slots = state.operatorSlots.map((s) => List<String>.from(s)).toList();
@@ -387,13 +390,13 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
+  /// Sorteia um número aleatório verificando antes se o usuário já o resolveu no Firestore
   void skipCurrentNumber() {
     _playClickIfEnabled();
-    final random = Random();
-    String nextNum;
-    do {
-      nextNum = (1000 + random.nextInt(9000)).toString();
-    } while (state.solvedNumbers.contains(nextNum));
+    final nextNum = FirestoreService.pickUnsolvedNumber(
+      state.solvedNumbers,
+      excludeCurrent: state.currentNumber,
+    );
 
     state = state.copyWith(
       currentNumber: nextNum,
@@ -404,13 +407,28 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  void markCurrentAsSolved(String successMsg) {
-    final updated = [...state.solvedNumbers, state.currentNumber];
-    prefs.setStringList('solvedNumbers', updated);
+  /// Grava o número resolvido e a pontuação no Firestore e avança para outro número não resolvido
+  Future<void> markCurrentAsSolved(String successMsg) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final solvedNum = state.currentNumber;
+    final points = FirestoreService.pointsForLevel(state.level);
+    final updatedSolved = state.solvedNumbers.contains(solvedNum)
+        ? state.solvedNumbers
+        : [...state.solvedNumbers, solvedNum];
+    final updatedScore = state.score + points;
+
+    if (user != null) {
+      await firestoreService.saveSolvedNumber(
+        user: user,
+        number: solvedNum,
+        pointsEarned: points,
+      );
+    }
 
     state = state.copyWith(
-      solvedNumbers: updated,
-      feedbackMessage: successMsg,
+      solvedNumbers: updatedSolved,
+      score: updatedScore,
+      feedbackMessage: '$successMsg (+$points pts)',
       feedbackStatus: FeedbackStatus.success,
       mikuMood: MikuMood.happy,
       isAnimating: true,
@@ -427,12 +445,14 @@ class GameNotifier extends StateNotifier<GameState> {
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) => throw UnimplementedError());
 
+final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
+
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return SettingsNotifier(prefs);
 });
 
 final gameProvider = StateNotifierProvider<GameNotifier, GameState>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return GameNotifier(prefs, ref);
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return GameNotifier(firestoreService, ref);
 });

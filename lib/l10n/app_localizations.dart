@@ -15,7 +15,10 @@ class AppLocalizations {
   String get appTitle => 'EMPLAKE GAME';
   String get reverseEngineering => isPt ? 'Engenharia Reversa' : 'Reverse Engineering';
   String get developedBy => isPt ? 'Desenvolvido pelo Grupo:' : 'Developed by Group:';
-  String get enterGame => isPt ? 'Entrar no Jogo' : 'Enter Game';
+  String get signInPrompt => isPt
+      ? 'Entre com E-mail/Senha ou Google para salvar seu progresso'
+      : 'Sign in with Email/Password or Google to save your progress';
+  String get logout => isPt ? 'Sair da Conta' : 'Sign Out';
 
   // Níveis
   String get levelFacil => isPt ? 'Fácil' : 'Easy';
@@ -25,6 +28,8 @@ class AppLocalizations {
 
   // Tela do Jogo
   String get levelLabel => isPt ? 'Nível' : 'Level';
+  String get scoreLabel => isPt ? 'Pontos' : 'Score';
+  String get loadingCloud => isPt ? 'Sincronizando dados com Firestore...' : 'Syncing data with Firestore...';
   String get equationHint => isPt
       ? 'Toque ou arraste os operadores para os espaços entre os números'
       : 'Tap or drag operators into the slots between numbers';
@@ -33,7 +38,7 @@ class AppLocalizations {
   String get clearAll => isPt ? 'Limpar' : 'Clear';
   String get skip => isPt ? 'Pular' : 'Skip';
   String get verify => isPt ? 'Verificar' : 'Verify';
-  String get correctMsg => isPt ? 'Sugoi! Equação correta!' : 'Sugoi! Correct equation!';
+  String get correctMsg => isPt ? 'Sugoi! Equação correta! Salvo no Firestore!' : 'Sugoi! Correct equation! Saved to Firestore!';
   String get incorrectMsg => isPt ? 'Equação incorreta. Tente novamente!' : 'Incorrect equation. Try again!';
   String get missingEquals => isPt ? 'A equação precisa conter o sinal de igual (=).' : 'The equation must contain an equals sign (=).';
   String get syntaxError => isPt ? 'Erro de sintaxe na expressão.' : 'Syntax error in the expression.';
@@ -43,9 +48,9 @@ class AppLocalizations {
   String get divByZero => isPt ? 'Divisão por zero não é permitida!' : 'Division by zero is not allowed!';
 
   // Miku falas
-  String get mikuWelcome => isPt ? 'Olá! Vamos resolver desafios matemáticos! ♪' : 'Hi! Let\'s solve math puzzles! ♪';
+  String get mikuWelcome => isPt ? 'Olá! Faça login para salvar sua pontuação! ♪' : 'Hi! Sign in to save your score! ♪';
   String get mikuThinking => isPt ? 'Coloque os operadores entre os números! ♪' : 'Place operators between the numbers! ♪';
-  String get mikuHappy => isPt ? 'Perfeito! Você conseguiu! ★' : 'Awesome! You nailed it! ★';
+  String get mikuHappy => isPt ? 'Perfeito! Pontos salvos na nuvem! ★' : 'Awesome! Points saved to the cloud! ★';
   String get mikuOops => isPt ? 'Quase lá! Confira os parênteses ou divisões! >_<' : 'Almost! Check parentheses or divisions! >_<';
 
   // Configurações
@@ -59,8 +64,8 @@ class AppLocalizations {
   String get mikuTheme => isPt ? 'Tema Hatsune Miku' : 'Hatsune Miku Theme';
 
   // Histórico
-  String get historyTitle => isPt ? 'Números Resolvidos' : 'Solved Numbers';
-  String get historyError => isPt ? 'Erro ao carregar histórico.' : 'Error loading history.';
+  String get historyTitle => isPt ? 'Números Resolvidos (Firestore)' : 'Solved Numbers (Firestore)';
+  String get historyError => isPt ? 'Erro ao carregar dados do Firestore.' : 'Error loading data from Firestore.';
   String get historyEmpty => isPt ? 'Nenhum número resolvido ainda!' : 'No solved numbers yet!';
   String get resolvedNumber => isPt ? 'Número Resolvido' : 'Solved Number';
   String get recordLabel => isPt ? 'Registro' : 'Record';
@@ -68,15 +73,15 @@ class AppLocalizations {
   // Ajuda
   String get helpTitle => isPt ? 'Como Jogar o Emplake' : 'How to Play Emplake';
   String get helpBody => isPt
-      ? '1. Os 4 dígitos do número sorteado ficam fixos na tela.\n\n'
+      ? '1. Os 4 dígitos do número sorteado ficam fixos na tela e nunca repetem um número que você já resolveu.\n\n'
         '2. Selecione ou arraste operadores para os espaços entre ou ao redor dos dígitos.\n\n'
         '3. Para remover um operador, toque no "x" dele ou limpe tudo.\n\n'
-        '4. Monte uma igualdade válida com o sinal (=).\n\n'
+        '4. Monte uma igualdade válida com o sinal (=) para ganhar pontos na sua conta Firebase.\n\n'
         '5. Nos níveis Intermediário, Avançado e Difícil, divisões com resultado decimal geram erro.'
-      : '1. The 4 digits of the drawn number stay fixed in order.\n\n'
+      : '1. The 4 digits stay fixed in order and never repeat a number you have already solved.\n\n'
         '2. Tap or drag operators into the slots between or around the digits.\n\n'
         '3. Tap an operator\'s "x" to remove it individually.\n\n'
-        '4. Build a valid equation using the equals sign (=).\n\n'
+        '4. Build a valid equation using (=) to earn points in your Firebase account.\n\n'
         '5. In Intermediate, Advanced, and Hard levels, non-integer divisions trigger an error.';
   String get gotIt => isPt ? 'Entendi' : 'Got it';
 }
