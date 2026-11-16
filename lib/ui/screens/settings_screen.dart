@@ -55,6 +55,13 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.soundEnabled,
             onChanged: (val) => notifier.toggleSound(val),
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.music_note, color: kMikuTeal),
+            title: Text(l10n.mikuMusicTitle),
+            subtitle: Text(l10n.mikuMusicSubtitle),
+            value: settings.musicEnabled,
+            onChanged: (val) => notifier.toggleMusic(val),
+          ),
           const Divider(),
 
           ListTile(
