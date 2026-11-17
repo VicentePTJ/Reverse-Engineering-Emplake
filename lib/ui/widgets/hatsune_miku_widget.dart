@@ -13,12 +13,23 @@ class HatsuneMikuWidget extends StatelessWidget {
   final MikuMood mood;
   final String speechText;
   final double size;
+  final String cameraTarget;
+  final String cameraOrbit;
+  final String minCameraOrbit;
+  final String maxCameraOrbit;
+  final String fieldOfView;
 
   const HatsuneMikuWidget({
     super.key,
     required this.mood,
     required this.speechText,
     this.size = 115,
+    // Valores padrão mantidos para preservar o enquadramento atual da tela de login
+    this.cameraTarget = '0m 1.35m 0m',
+    this.cameraOrbit = '0deg 82deg 1.55m',
+    this.minCameraOrbit = '0deg 82deg 0.55m',
+    this.maxCameraOrbit = '0deg 82deg 2.2m',
+    this.fieldOfView = '32deg',
   });
 
   Color _borderColorForMood() {
@@ -92,11 +103,11 @@ class HatsuneMikuWidget extends StatelessWidget {
               cameraControls: true,
               disableZoom: false,
               disablePan: true,
-              cameraTarget: '-0.05m 1.30m 0m',
-              cameraOrbit: '0deg 82deg 1.55m',
-              minCameraOrbit: '0deg 82deg 0.55m',
-              maxCameraOrbit: '0deg 82deg 2.2m',
-              fieldOfView: '32deg',
+              cameraTarget: cameraTarget,
+              cameraOrbit: cameraOrbit,
+              minCameraOrbit: minCameraOrbit,
+              maxCameraOrbit: maxCameraOrbit,
+              fieldOfView: fieldOfView,
             ),
           ),
         ),

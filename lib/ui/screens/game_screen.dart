@@ -477,12 +477,15 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Center(
-                                child: HatsuneMikuWidget(
-                                  mood: gameState.mikuMood,
-                                  speechText: mikuSpeech,
-                                  size: isSmallScreen || isCompactHeight ? 95 : 120,
-                                ),
-                              ),
+  child: HatsuneMikuWidget(
+    mood: gameState.mikuMood,
+    speechText: mikuSpeech,
+    size: isSmallScreen || isCompactHeight ? 95 : 120,
+    cameraTarget: '-0.03m 1.38m 0m',
+    cameraOrbit: '0deg 82deg 1.15m',
+    fieldOfView: '28deg',
+  ),
+),
                               if (needsVerticalScroll) const SizedBox(height: 12),
 
                               // Tabuleiro Responsivo
