@@ -92,7 +92,7 @@ class HatsuneMikuWidget extends StatelessWidget {
               cameraControls: true,
               disableZoom: false,
               disablePan: true,
-              cameraTarget: '0m 1.15m 0m',
+              cameraTarget: '-0.05m 1.30m 0m',
               cameraOrbit: '0deg 82deg 1.55m',
               minCameraOrbit: '0deg 82deg 0.55m',
               maxCameraOrbit: '0deg 82deg 2.2m',
