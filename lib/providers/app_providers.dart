@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../engine/math_engine.dart';
+import '../models/vocaloid_achievement.dart';
 import '../services/firestore_service.dart';
 import '../services/sound_service.dart';
 
@@ -139,6 +140,8 @@ class GameState {
   final String feedbackMessage;
   final FeedbackStatus feedbackStatus;
   final MikuMood mikuMood;
+  final String? equippedAchievementId;
+  final VocaloidAchievement? lastUnlockedAchievement;
 
   GameState({
     this.syncedUserId,
@@ -152,6 +155,8 @@ class GameState {
     this.feedbackMessage = '',
     this.feedbackStatus = FeedbackStatus.none,
     this.mikuMood = MikuMood.thinking,
+    this.equippedAchievementId,
+    this.lastUnlockedAchievement,
   });
 
   List<String> get fullTokens {
@@ -163,6 +168,16 @@ class GameState {
     }
     result.addAll(operatorSlots[digits.length]);
     return result;
+  }
+
+  VocaloidAchievement? get equippedAchievement {
+    if (equippedAchievementId == null) return null;
+    for (final a in kVocaloidAchievements) {
+      if (a.id == equippedAchievementId && a.isUnlocked(score)) {
+        return a;
+      }
+    }
+    return null;
   }
 
   GameState copyWith({
@@ -177,6 +192,9 @@ class GameState {
     String? feedbackMessage,
     FeedbackStatus? feedbackStatus,
     MikuMood? mikuMood,
+    String? equippedAchievementId,
+    VocaloidAchievement? lastUnlockedAchievement,
+    bool clearLastUnlocked = false,
   }) {
     return GameState(
       syncedUserId: syncedUserId ?? this.syncedUserId,
@@ -190,6 +208,10 @@ class GameState {
       feedbackMessage: feedbackMessage ?? this.feedbackMessage,
       feedbackStatus: feedbackStatus ?? this.feedbackStatus,
       mikuMood: mikuMood ?? this.mikuMood,
+      equippedAchievementId: equippedAchievementId ?? this.equippedAchievementId,
+      lastUnlockedAchievement: clearLastUnlocked
+          ? null
+          : (lastUnlockedAchievement ?? this.lastUnlockedAchievement),
     );
   }
 }
@@ -197,9 +219,12 @@ class GameState {
 class GameNotifier extends StateNotifier<GameState> {
   final FirestoreService firestoreService;
   final SoundService soundService;
+  final SharedPreferences prefs;
   final Ref ref;
 
-  GameNotifier(this.firestoreService, this.soundService, this.ref)
+  static const String _equippedIconKey = 'equipped_vocaloid_achievement_id';
+
+  GameNotifier(this.firestoreService, this.soundService, this.prefs, this.ref)
       : super(GameState(
           currentNumber: '8131',
           level: DifficultyLevel.facil,
@@ -207,6 +232,7 @@ class GameNotifier extends StateNotifier<GameState> {
           activeSlotIndex: 1,
           solvedNumbers: const [],
           score: 0,
+          equippedAchievementId: prefs.getString(_equippedIconKey),
         ));
 
   static List<List<String>> _defaultSlots() {
@@ -250,6 +276,18 @@ class GameNotifier extends StateNotifier<GameState> {
         ? FirestoreService.pickUnsolvedNumber(profile.solvedNumbers)
         : state.currentNumber;
 
+    // Se o usuário já tinha pontos mas nenhum ícone equipado, equipa o primeiro desbloqueado
+    String? equipped = state.equippedAchievementId;
+    if (equipped == null) {
+      for (final a in kVocaloidAchievements) {
+        if (a.isUnlocked(profile.score)) {
+          equipped = a.id;
+          prefs.setString(_equippedIconKey, a.id);
+          break;
+        }
+      }
+    }
+
     state = state.copyWith(
       syncedUserId: uid,
       solvedNumbers: profile.solvedNumbers,
@@ -259,7 +297,20 @@ class GameNotifier extends StateNotifier<GameState> {
       activeSlotIndex: 1,
       feedbackStatus: FeedbackStatus.none,
       mikuMood: MikuMood.thinking,
+      equippedAchievementId: equipped,
     );
+  }
+
+  void equipAchievement(String achievementId) {
+    final target = kVocaloidAchievements.where((a) => a.id == achievementId).firstOrNull;
+    if (target == null || !target.isUnlocked(state.score)) return;
+    _playClick();
+    prefs.setString(_equippedIconKey, achievementId);
+    state = state.copyWith(equippedAchievementId: achievementId);
+  }
+
+  void clearLastUnlockedAchievement() {
+    state = state.copyWith(clearLastUnlocked: true);
   }
 
   void selectSlot(int index) {
@@ -313,7 +364,11 @@ class GameNotifier extends StateNotifier<GameState> {
       final closeSlot = min(openSlot + 1, 4);
       slots[openSlot].add('⌊');
       slots[closeSlot].insert(0, '⌋');
-      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none);
+      state = state.copyWith(
+        operatorSlots: slots,
+        feedbackStatus: FeedbackStatus.none,
+        mikuMood: MikuMood.thinking,
+      );
       return;
     }
 
@@ -322,21 +377,33 @@ class GameNotifier extends StateNotifier<GameState> {
       final closeSlot = min(openSlot + 1, 4);
       slots[openSlot].add('⌈');
       slots[closeSlot].insert(0, '⌉');
-      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none);
+      state = state.copyWith(
+        operatorSlots: slots,
+        feedbackStatus: FeedbackStatus.none,
+        mikuMood: MikuMood.thinking,
+      );
       return;
     }
 
     if (op == '√' || op == '∛') {
       final prefixSlot = targetSlot == 4 ? 3 : targetSlot;
       slots[prefixSlot].add(op);
-      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
+      state = state.copyWith(
+        operatorSlots: slots,
+        feedbackStatus: FeedbackStatus.none,
+        mikuMood: MikuMood.thinking,
+      );
       return;
     }
 
     if (op == '!') {
       final postSlot = targetSlot == 0 ? 1 : targetSlot;
       slots[postSlot].add('!');
-      state = state.copyWith(operatorSlots: slots, feedbackStatus: FeedbackStatus.none, mikuMood: MikuMood.thinking);
+      state = state.copyWith(
+        operatorSlots: slots,
+        feedbackStatus: FeedbackStatus.none,
+        mikuMood: MikuMood.thinking,
+      );
       return;
     }
 
@@ -385,6 +452,7 @@ class GameNotifier extends StateNotifier<GameState> {
       operatorSlots: slots,
       activeSlotIndex: toSlot,
       feedbackStatus: FeedbackStatus.none,
+      mikuMood: MikuMood.thinking,
     );
   }
 
@@ -403,7 +471,6 @@ class GameNotifier extends StateNotifier<GameState> {
     }
   }
 
-  /// Esvazia os slots visualmente enquanto os operadores voam de volta aos botões
   void startReturnAnimation({bool isSuccess = false, String? successMsg, int? pointsEarned}) {
     if (!isSuccess) {
       _playClick();
@@ -417,13 +484,13 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
-  /// Finaliza a limpeza restaurando o sinal de '=' padrão após o pouso dos operadores
   void finishClearAnimation() {
     state = state.copyWith(
       operatorSlots: _defaultSlots(),
       activeSlotIndex: 1,
       isAnimating: false,
       feedbackStatus: FeedbackStatus.none,
+      feedbackMessage: '',
       mikuMood: MikuMood.thinking,
     );
   }
@@ -448,6 +515,15 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
+  void resetMikuMood() {
+    state = state.copyWith(
+      isAnimating: false,
+      mikuMood: MikuMood.thinking,
+      feedbackStatus: FeedbackStatus.none,
+      feedbackMessage: '',
+    );
+  }
+
   void skipCurrentNumber() {
     if (!state.isAnimating) {
       _playClick();
@@ -462,12 +538,13 @@ class GameNotifier extends StateNotifier<GameState> {
       operatorSlots: _defaultSlots(),
       activeSlotIndex: 1,
       isAnimating: false,
-      feedbackStatus: FeedbackStatus.none,
       mikuMood: MikuMood.thinking,
+      feedbackStatus: FeedbackStatus.none,
+      feedbackMessage: '',
     );
   }
 
-  /// Toca o som de sucesso no gesto do usuário e salva a pontuação no Firestore
+  /// Salva a pontuação no Firestore e verifica se uma nova conquista foi desbloqueada
   Future<int> saveSolvedToCloud() async {
     _playSuccess();
 
@@ -477,7 +554,8 @@ class GameNotifier extends StateNotifier<GameState> {
     final updatedSolved = state.solvedNumbers.contains(solvedNum)
         ? state.solvedNumbers
         : [...state.solvedNumbers, solvedNum];
-    final updatedScore = state.score + points;
+    final previousScore = state.score;
+    final updatedScore = previousScore + points;
 
     if (user != null) {
       await firestoreService.saveSolvedNumber(
@@ -487,9 +565,26 @@ class GameNotifier extends StateNotifier<GameState> {
       );
     }
 
+    // Verifica se cruzou a meta de alguma conquista agora
+    VocaloidAchievement? newlyUnlocked;
+    for (final achievement in kVocaloidAchievements) {
+      if (previousScore < achievement.requiredPoints &&
+          updatedScore >= achievement.requiredPoints) {
+        newlyUnlocked = achievement;
+      }
+    }
+
+    String? equipped = state.equippedAchievementId;
+    if (newlyUnlocked != null && equipped == null) {
+      equipped = newlyUnlocked.id;
+      await prefs.setString(_equippedIconKey, equipped);
+    }
+
     state = state.copyWith(
       solvedNumbers: updatedSolved,
       score: updatedScore,
+      equippedAchievementId: equipped,
+      lastUnlockedAchievement: newlyUnlocked,
     );
     return points;
   }
@@ -510,5 +605,6 @@ final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((r
 final gameProvider = StateNotifierProvider<GameNotifier, GameState>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider);
   final soundService = ref.watch(soundServiceProvider);
-  return GameNotifier(firestoreService, soundService, ref);
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return GameNotifier(firestoreService, soundService, prefs, ref);
 });

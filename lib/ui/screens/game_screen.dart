@@ -6,9 +6,11 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:go_router/go_router.dart';
 import '../../l10n/app_localizations.dart';
+import '../../models/vocaloid_achievement.dart';
 import '../../providers/app_providers.dart';
 import '../../engine/math_engine.dart';
 import '../../services/firestore_service.dart';
+import '../widgets/achievements_dialog.dart';
 import '../widgets/hatsune_miku_widget.dart';
 
 class _OperatorDragData {
@@ -61,6 +63,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
   late final Animation<double> _flyAnimation;
   List<_FlyingOperator> _flyingOperators = [];
   VoidCallback? _onFlyComplete;
+  bool _isWaitingNextPuzzle = false;
 
   @override
   void initState() {
@@ -68,7 +71,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
     _flyController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-      animationBehavior: AnimationBehavior.preserve, // Impede o Windows de acelerar para 5%
+      animationBehavior: AnimationBehavior.preserve,
     );
     _flyAnimation = CurvedAnimation(
       parent: _flyController,
@@ -110,7 +113,73 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
     }
   }
 
-  /// Captura a posição atual de todos os operadores na resposta e anima o retorno até seus botões
+  void _openAchievementsDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => const AchievementsDialog(),
+    );
+  }
+
+  void _showAchievementUnlockedBanner(VocaloidAchievement achievement) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: achievement.secondaryColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: achievement.primaryColor, width: 2),
+        ),
+        content: Row(
+          children: [
+            VocaloidIconBadge(
+              achievement: achievement,
+              unlocked: true,
+              size: 40,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'CONQUISTA DESBLOQUEADA!',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.amberAccent,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  Text(
+                    '${achievement.characterName} (${achievement.title})',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                _openAchievementsDialog();
+              },
+              child: const Text(
+                'Ver',
+                style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _animateOperatorsHome({
     required bool isSuccess,
     String? successMsg,
@@ -207,18 +276,34 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
     final user = FirebaseAuth.instance.currentUser;
     _ensureUserFuture(user);
 
+    ref.listen<VocaloidAchievement?>(
+      gameProvider.select((s) => s.lastUnlockedAchievement),
+      (previous, next) {
+        if (next != null) {
+          _showAchievementUnlockedBanner(next);
+          ref.read(gameProvider.notifier).clearLastUnlockedAchievement();
+        }
+      },
+    );
+
     final gameState = ref.watch(gameProvider);
     final gameNotifier = ref.read(gameProvider.notifier);
     final settings = ref.watch(settingsProvider);
     final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
+    final isLocked = gameState.isAnimating || _isWaitingNextPuzzle;
+
+    final unlockedCount = kVocaloidAchievements
+        .where((a) => a.isUnlocked(gameState.score))
+        .length;
+    final equippedBadge = gameState.equippedAchievement;
 
     return Stack(
       key: _rootStackKey,
       children: [
         Scaffold(
           appBar: AppBar(
-            toolbarHeight: 50,
+            toolbarHeight: 54,
             title: Row(
               children: [
                 Flexible(
@@ -227,7 +312,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Chip(
                   avatar: const Icon(Icons.star, size: 16, color: Colors.amber),
                   label: Text(
@@ -235,6 +320,47 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: equippedBadge != null
+                      ? 'Conquistas ($unlockedCount/${kVocaloidAchievements.length}) • Equipado: ${equippedBadge.characterName}'
+                      : 'Conquistas Vocaloid & UTAU ($unlockedCount/${kVocaloidAchievements.length})',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _openAchievementsDialog,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: equippedBadge != null
+                            ? equippedBadge.primaryColor.withOpacity(0.16)
+                            : colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: equippedBadge?.primaryColor ?? colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (equippedBadge != null)
+                            VocaloidIconBadge(
+                              achievement: equippedBadge,
+                              unlocked: true,
+                              size: 24,
+                              showCodeTag: false,
+                            )
+                          else
+                            const Icon(Icons.emoji_events_outlined, size: 18, color: Colors.amber),
+                          const SizedBox(width: 5),
+                          Text(
+                            '$unlockedCount/${kVocaloidAchievements.length}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -249,7 +375,10 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                   );
                 }).toList(),
                 onChanged: (newLvl) {
-                  if (newLvl != null) gameNotifier.setLevel(newLvl);
+                  if (newLvl != null) {
+                    gameNotifier.setLevel(newLvl);
+                    gameNotifier.resetMikuMood();
+                  }
                 },
               ),
               IconButton(
@@ -319,7 +448,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                           context: context,
                           slotIndex: i,
                           slotTokens: gameState.operatorSlots[i],
-                          isActive: gameState.activeSlotIndex == i && !gameState.isAnimating,
+                          isActive: gameState.activeSlotIndex == i && !isLocked,
                           isSmallScreen: isSmallScreen,
                           gameNotifier: gameNotifier,
                         ),
@@ -351,7 +480,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                 child: HatsuneMikuWidget(
                                   mood: gameState.mikuMood,
                                   speechText: mikuSpeech,
-                                  size: isSmallScreen || isCompactHeight ? 56 : 66,
+                                  size: isSmallScreen || isCompactHeight ? 95 : 120,
                                 ),
                               ),
                               if (needsVerticalScroll) const SizedBox(height: 12),
@@ -475,7 +604,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                 if (needsVerticalScroll) const SizedBox(height: 12),
                               ],
 
-                              // Teclado de Operadores (Destino da animação de retorno)
+                              // Teclado de Operadores
                               Column(
                                 key: _keyboardAreaKey,
                                 mainAxisSize: MainAxisSize.min,
@@ -512,7 +641,7 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.refresh, size: 18),
                                     label: Text(l10n.clearAll),
-                                    onPressed: gameState.isAnimating
+                                    onPressed: isLocked
                                         ? null
                                         : () {
                                             _animateOperatorsHome(
@@ -524,14 +653,17 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.skip_next, size: 18),
                                     label: Text(l10n.skip),
-                                    onPressed: gameState.isAnimating
+                                    onPressed: isLocked
                                         ? null
-                                        : () => gameNotifier.skipCurrentNumber(),
+                                        : () {
+                                            gameNotifier.skipCurrentNumber();
+                                            gameNotifier.resetMikuMood();
+                                          },
                                   ),
                                   FilledButton.icon(
                                     icon: const Icon(Icons.check_circle, size: 18),
                                     label: Text(l10n.verify),
-                                    onPressed: gameState.isAnimating
+                                    onPressed: isLocked
                                         ? null
                                         : () async {
                                             try {
@@ -545,13 +677,20 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                               );
 
                                               if (isValid) {
+                                                setState(() => _isWaitingNextPuzzle = true);
                                                 final points = await gameNotifier.saveSolvedToCloud();
                                                 if (!mounted) return;
                                                 _animateOperatorsHome(
                                                   isSuccess: true,
                                                   successMsg: l10n.correctMsg,
                                                   pointsEarned: points,
-                                                  onComplete: () => gameNotifier.skipCurrentNumber(),
+                                                  onComplete: () async {
+                                                    await Future.delayed(const Duration(milliseconds: 2200));
+                                                    if (!mounted) return;
+                                                    setState(() => _isWaitingNextPuzzle = false);
+                                                    gameNotifier.skipCurrentNumber();
+                                                    gameNotifier.resetMikuMood();
+                                                  },
                                                 );
                                               } else {
                                                 gameNotifier.setFeedback(
@@ -561,6 +700,9 @@ class _GameScreenState extends ConsumerState<GameScreen> with SingleTickerProvid
                                                 );
                                               }
                                             } on FormatException catch (e) {
+                                              if (mounted && _isWaitingNextPuzzle) {
+                                                setState(() => _isWaitingNextPuzzle = false);
+                                              }
                                               gameNotifier.setFeedback(
                                                 e.message,
                                                 FeedbackStatus.error,
